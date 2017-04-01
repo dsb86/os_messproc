@@ -1,3 +1,10 @@
 .idea/
 __pycache__/
 test_files/
+demo_any.py
+demo_return.py
+demo_simple.py
+demo_timeout.py
+multiple_consumer.py
+multi_producer_multi_consumer.py
+order.py

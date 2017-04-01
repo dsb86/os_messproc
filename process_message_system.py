@@ -3,11 +3,12 @@ import sys
 import pickle
 import threading
 import time
+import queue
 
 ANY = any
 
 class Message:
-    def __init__(self, name_in, action_in):
+    def __init__(self, name_in, **action_in):
         self.name = name_in
         self.action = action_in
 
@@ -21,15 +22,16 @@ class MessageProc:
 
     def __init__(self):
 
-        self.pid = None
+        self.my_pid = None
         self.pipe_name = None
-        self.communication_queue
-
+        self.communication_queue = None
+        self.arrived_condition = None
     def main(self):
         # set pid and pipe name
-        self.pid = os.getpid()
-        self.pipe_name = "/tmp/{}.pkl".format(self.pid)
-
+        self.my_pid = os.getpid()
+        self.pipe_name = "/tmp/{}.pkl".format(self.my_pid)
+        self.communication_queue = queue.Queue()
+        self.arrived_condition = threading.Condition()
     def start(self):
         # fork
         pid = os.fork()
@@ -42,7 +44,7 @@ class MessageProc:
             # register child with parent
             return pid
 
-    def extract_from_pipe(self, arrived_condition):
+    def extract_from_pipe(self):
 
         if not os.path.exists(self.pipe_name):
             os.mkfifo(self.pipe_name)
@@ -52,33 +54,64 @@ class MessageProc:
                 try:
                     line = pickle.load(unpickle_file)
 
-                    with arrived_condition:
+                    with self.arrived_condition:
                         self.communication_queue.put(line)
-                        arrived_condition.notify()
+
+                        self.arrived_condition.notify()
                 except EOFError:
                     time.sleep(0.01)
 
+    # def extract_from_pipe(self, arrived_condition):
+    #
+    #     if not os.path.exists(self.pipe_name):
+    #         os.mkfifo(self.pipe_name)
+    #     print("{}{}".format("pipe in ", self.pipe_name))
+    #     with open(self.pipe_name, 'rb') as unpickle_file:
+    #         while True:
+    #             try:
+    #                 line = pickle.load(unpickle_file)
+    #
+    #                 with arrived_condition:
+    #                     self.communication_queue.put(line)
+    #                     print(line)
+    #                     arrived_condition.notify()
+    #             except EOFError:
+    #                 time.sleep(0.01)
+
     def give(self, pid, arg):
+
         # open desired pipe file for writing
         pipe_out = "/tmp/{}.pkl".format(pid)
+
         pickle_file = open(pipe_out, 'wb', buffering = 0)
         # pickle data
         pickle.dump(arg, pickle_file)
         # close pickle file
         pickle_file.close()
 
-    def recieve(self, *messages):
+    def receive(self, *messages):
+
         dictionary = {}
         for message in messages:
             key = message.get_name()
             value = message.get_action()
             dictionary[key]=value
 
-        arrived_condition = threading.Condition()
-        transfer_thread = threading.Thread(target=self.extract_from_pipe(arrived_condition), daemon=True)
+        # arrived_condition = threading.Condition()
+        transfer_thread = threading.Thread(target=self.extract_from_pipe, daemon=True)
+
         transfer_thread.start()
 
 
+        while True:
+            with self.arrived_condition:
+                self.arrived_condition.wait()
+
+                arg = self.communication_queue.get()
+                try:
+                    return dictionary[arg]['action']()
+                except KeyError:
+                    return dictionary[ANY]['action']()
 
 
 

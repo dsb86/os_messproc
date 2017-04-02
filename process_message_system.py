@@ -53,7 +53,7 @@ class MessageProc:
             while True:
                 try:
                     line = pickle.load(unpickle_file)
-
+                    
                     with self.arrived_condition:
                         self.communication_queue.put(line)
 
@@ -61,31 +61,17 @@ class MessageProc:
                 except EOFError:
                     time.sleep(0.01)
 
-    # def extract_from_pipe(self, arrived_condition):
-    #
-    #     if not os.path.exists(self.pipe_name):
-    #         os.mkfifo(self.pipe_name)
-    #     print("{}{}".format("pipe in ", self.pipe_name))
-    #     with open(self.pipe_name, 'rb') as unpickle_file:
-    #         while True:
-    #             try:
-    #                 line = pickle.load(unpickle_file)
-    #
-    #                 with arrived_condition:
-    #                     self.communication_queue.put(line)
-    #                     print(line)
-    #                     arrived_condition.notify()
-    #             except EOFError:
-    #                 time.sleep(0.01)
 
-    def give(self, pid, arg):
+    def give(self, pid, label, *arg):
 
         # open desired pipe file for writing
         pipe_out = "/tmp/{}.pkl".format(pid)
-
+        while not os.path.exists(pipe_out):
+            time.sleep(0.01)
         pickle_file = open(pipe_out, 'wb', buffering = 0)
         # pickle data
-        pickle.dump(arg, pickle_file)
+
+        pickle.dump((label, arg), pickle_file)
         # close pickle file
         pickle_file.close()
 
@@ -109,9 +95,11 @@ class MessageProc:
 
                 arg = self.communication_queue.get()
                 try:
-                    return dictionary[arg]['action']()
+                    return dictionary[arg[0]]['action'](arg[1][0])
                 except KeyError:
                     return dictionary[ANY]['action']()
+                except IndexError:
+                    return dictionary[arg[0]]['action']()
 
 
 
